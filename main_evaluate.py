@@ -20,7 +20,7 @@ import utils
 import utils_img
 from model.hidden import Hidden
 from noise_layers.noiser import Noiser
-from options import HiDDenConfiguration
+from hidden_configuration import HiDDenConfiguration
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger()
@@ -47,7 +47,8 @@ def get_parser():
     parser.add_argument("--ecc_method", type=str, default="none", help="Should be 'none' or 'ldpc,dv=*,dc=*,snr=*'")
 
     # Model parameters
-    parser.add_argument("--model_path", type=str, default="/private/home/pfz/HiDDeN/experiments/no-noise adam-eps-1e-4/checkpoints/no-noise--epoch-200.pyt")
+    parser.add_argument("--model_path", type=str)
+    parser.add_argument("--config_path", type=str)
     # parser.add_argument("--model_path", type=str, default="/private/home/pfz/HiDDeN/experiments/combined-noise/checkpoints/combined-noise--epoch-400.pyt")
 
     # Optimization parameters
@@ -156,20 +157,12 @@ def main(params):
     logger.info("git:{}".format(utils.get_sha()))
 
     # Load marking network
-    hidden_config = HiDDenConfiguration(H=128, W=128,
-                        message_length=30,
-                        encoder_blocks=4, encoder_channels=64,
-                        decoder_blocks=7, decoder_channels=64,
-                        use_discriminator=True,
-                        use_vgg=False,
-                        discriminator_blocks=3, discriminator_channels=64,
-                        decoder_loss=1,
-                        encoder_loss=0.7,
-                        adversarial_loss=1e-3,
-                        enable_fp16=False
-                    )
+    with open(params.config_path, 'rb') as f:
+        hidden_args = json.load(f)
+        hidden_args.pop('attacks_arg')
+        hidden_config = HiDDenConfiguration(**hidden_args)
     params.num_bits = hidden_config.message_length
-    hidden_net = Hidden(hidden_config, device, Noiser([], device), tb_logger=None)
+    hidden_net = Hidden(hidden_config, device, Noiser([], device))
     checkpoint = torch.load(params.model_path)
     utils.model_from_checkpoint(hidden_net, checkpoint)
     encoder, decoder = hidden_net.encoder_decoder.encoder.eval(), hidden_net.encoder_decoder.decoder.eval()

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from options import HiDDenConfiguration
+from hidden_configuration import HiDDenConfiguration
 from model.discriminator import Discriminator
 from model.encoder_decoder import EncoderDecoder
 from vgg_loss import VGGLoss

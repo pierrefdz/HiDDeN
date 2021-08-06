@@ -16,7 +16,7 @@ from torch.utils import data
 import torch.nn.functional as F
 import torch.distributed as dist
 
-from options import HiDDenConfiguration, TrainingOptions
+from hidden_configuration import HiDDenConfiguration, TrainingOptions
 from model.hidden import Hidden
 
 
@@ -161,7 +161,7 @@ def save_checkpoint(model: Hidden, experiment_name: str, epoch: int, checkpoint_
     logging.info('Saving checkpoint done.')
 
 
-# def load_checkpoint(hidden_net: Hidden, options: Options, this_run_folder: str):
+# def load_checkpoint(hidden_net: Hidden, hidden_configuration: Options, this_run_folder: str):
 def load_last_checkpoint(checkpoint_folder):
     """ Load the last checkpoint from the given folder """
     last_checkpoint_file = last_checkpoint_from_folder(checkpoint_folder)

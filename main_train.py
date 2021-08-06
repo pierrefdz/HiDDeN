@@ -15,10 +15,10 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
-from options import *
+from hidden_configuration import *
 from model.hidden import Hidden
 from noise_layers.noiser import Noiser
-import noise_argparser
+from noise_layers.noiser import parse_attack_args
 
 import utils
 import utils_train
@@ -31,12 +31,13 @@ def get_parser():
     # Data and checkpoint dirs
     parser.add_argument('--train-dir', default='/checkpoint/pfz/watermarking/data/train_coco_10k_resized', type=str)
     parser.add_argument('--val-dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
-    parser.add_argument('--output_dir', default="expe", type=str, help='Path to save logs and checkpoints.')
+    parser.add_argument('--output_dir', default="", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=50, type=int)
 
     # Network params
-    # parser.add_argument('--noise', nargs='*', action=NoiseArgParser, default="")
-    parser.add_argument('--noise', default="crop((0.2,0.3),(0.4,0.5))+cropout((0.11,0.22),(0.33,0.44))+dropout(0.2,0.3)+jpeg()", type=str)
+    # parser.add_argument('--attack', nargs='*', action=NoiseArgParser, default="")
+    parser.add_argument('--attacks', default="", type=str)
+    # parser.add_argument('--attacks', default="crop((0.2,0.3),(0.4,0.5))+cropout((0.11,0.22),(0.33,0.44))+dropout(0.2,0.3)+jpeg()", type=str)
     parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--num_bits', default=30, type=int)
 
@@ -79,30 +80,28 @@ def train(args):
     train_loader, val_loader = utils_train.get_data_loaders(args.train_dir, args.val_dir, args.batch_size, args.num_workers)
 
     # Build HiDDeN and Noise model
-    args.config_path = os.path.join(args.output_dir, 'config.pkl')
+    args.config_path = os.path.join(args.output_dir, 'config.json')
     if not os.path.exists(args.config_path):
-        noise_config = noise_argparser.parse_noise_args(args.noise) if args.noise is not None else []
-        hidden_config = HiDDenConfiguration(H=args.image_size, W=args.image_size,
-                                            message_length=args.num_bits,
-                                            encoder_blocks=4, encoder_channels=64,
-                                            decoder_blocks=7, decoder_channels=64,
-                                            use_discriminator=True,
-                                            use_vgg=False,
-                                            discriminator_blocks=3, discriminator_channels=64,
-                                            decoder_loss=1,
-                                            encoder_loss=0.7,
-                                            adversarial_loss=1e-3,
-                                            enable_fp16=args.enable_fp16
-                                            )
-        with open(args.config_path, 'wb+') as f:
-            pickle.dump(noise_config, f)
-            pickle.dump(hidden_config, f)
+        hidden_args = {'H':args.image_size, 'W':args.image_size,'message_length':args.num_bits,
+            'encoder_blocks':4, 'encoder_channels':64,
+            'decoder_blocks':7, 'decoder_channels':64,
+            'use_discriminator':True,'use_vgg':False,
+            'discriminator_blocks':3, 'discriminator_channels':64,
+            'decoder_loss':1,'encoder_loss':0.7,
+            'adversarial_loss':1e-3,'enable_fp16':args.enable_fp16                      
+        } 
+        attack_config = parse_attack_args(args.attacks)
+        hidden_config = HiDDenConfiguration(**hidden_args)
+        with open(args.config_path, 'w') as f:
+            hidden_args['attacks_arg'] = args.attacks
+            json.dump(hidden_args, f)
     else:
         with open(args.config_path, 'rb') as f:
-            noise_config = pickle.load(f)
-            hidden_config = pickle.load(f)
-    noiser = Noiser(noise_config, device)
-    hidden_net = Hidden(hidden_config, device, noiser)
+            hidden_args = json.load(f)
+            attack_config = parse_attack_args(hidden_args.pop('attacks_arg'))
+            hidden_config = HiDDenConfiguration(**hidden_args)
+    attacker = Noiser(attack_config, device)
+    hidden_net = Hidden(hidden_config, device, attacker)
 
     # Distributed training
     hidden_net.encoder_decoder = nn.parallel.DistributedDataParallel(hidden_net.encoder_decoder, device_ids=[args.local_rank])
@@ -124,7 +123,7 @@ def train(args):
         print('Model Configuration:\n')
         print(pprint.pformat(vars(hidden_config)))
         print('\nNoise configuration:\n')
-        print(pprint.pformat(str(noise_config)))
+        print(pprint.pformat(str(attack_config)))
 
     # Train
     start_time = time.time()
@@ -186,7 +185,7 @@ def val_one_epoch(hidden_net, data_loader, epoch, args):
     for it, (imgs, _) in enumerate(metric_logger.log_every(data_loader, 50, header)):
         imgs = imgs.to(device, non_blocking=True) # BxCxHxW
         msgs = utils.generate_messages(imgs.size(0), args.num_bits).to(device).type(torch.float) # BxK
-        losses, (encoded_images, noised_images, decoded_messages) = hidden_net.validate_on_batch([imgs, msgs])
+        losses, (encoded_images, attacked_images, decoded_messages) = hidden_net.validate_on_batch([imgs, msgs])
         torch.cuda.synchronize()
         for name, loss in losses.items():
             metric_logger.update(**{name:loss})

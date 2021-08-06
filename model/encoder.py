@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from options import HiDDenConfiguration
+from hidden_configuration import HiDDenConfiguration
 from model.conv_bn_relu import ConvBNRelu
 
 
@@ -10,8 +10,6 @@ class Encoder(nn.Module):
     """
     def __init__(self, config: HiDDenConfiguration):
         super(Encoder, self).__init__()
-        self.H = config.H
-        self.W = config.W
         self.conv_channels = config.encoder_channels
         self.num_blocks = config.encoder_blocks
 
@@ -34,7 +32,6 @@ class Encoder(nn.Module):
         expanded_message = message.unsqueeze(-1)
         expanded_message.unsqueeze_(-1)
 
-        # expanded_message = expanded_message.expand(-1,-1, self.H, self.W)
         expanded_message = expanded_message.expand(-1,-1, image.size(-2), image.size(-1))
         encoded_image = self.conv_layers(image)
         # concatenate expanded message and image
