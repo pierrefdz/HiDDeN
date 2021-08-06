@@ -5,15 +5,87 @@ import csv
 import time
 import pickle
 import logging
+import socket
+import subprocess
+import pyldpc
 
 import torch
 from torchvision import datasets, transforms
 import torchvision.utils
 from torch.utils import data
 import torch.nn.functional as F
+import torch.distributed as dist
 
 from options import HiDDenConfiguration, TrainingOptions
 from model.hidden import Hidden
+
+
+def bool_inst(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise ValueError('Boolean value expected in args')
+
+def get_sha():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+
+    def _run(command):
+        return subprocess.check_output(command, cwd=cwd).decode('ascii').strip()
+    sha = 'N/A'
+    diff = "clean"
+    branch = 'N/A'
+    try:
+        sha = _run(['git', 'rev-parse', 'HEAD'])
+        subprocess.check_output(['git', 'diff'], cwd=cwd)
+        diff = _run(['git', 'diff-index', 'HEAD'])
+        diff = "has uncommited changes" if diff else "clean"
+        branch = _run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+    except Exception:
+        pass
+    message = f"sha: {sha}, status: {diff}, branch: {branch}"
+    return message
+
+def generate_messages(n, k, ecc_params=None, fill=None):
+    """
+    Generate random original messages and encoded messages with a given ECC method. 
+    If no ECC method is given, returns the msgs and a copy of it.
+    Args:
+        n: Number of messages to generate
+        k: length of the message
+        eec_params: parameters of the ECC method
+    """
+    if fill=='true':
+        msgs_orig = torch.rand((n,k))>-1
+    elif fill=='false':
+        msgs_orig = torch.rand((n,k))>2
+    msgs_orig = torch.rand((n,k))>0.5
+    if ecc_params is not None and ecc_params['name'] == "ldpc":
+        msgs = msgs_orig.clone()
+        msgs = msgs.numpy()
+        msgs = [pyldpc.encode(ecc_params['G'], msgs[kk,:], snr=np.inf) for kk in range(msgs.shape[0])] # NxK (K>K')
+        msgs = torch.tensor(np.vstack(msgs)) > 0
+        return msgs_orig, msgs
+    else:
+        return msgs_orig
+
+def parse_params(s):
+    """
+    Parse parameters into a dictionary, useful for optimizer and scheduler.
+    Input should be of the form:
+        - "SGD,lr=0.01"
+        - "Adam"
+    """
+    s = s.replace(' ', '').split(',')
+    params = {}
+    params['name'] = s[0]
+    for x in s[1:]:
+        x = x.split('=')
+        params[x[0]]=float(x[1])
+    return params
 
 
 def image_to_tensor(image):
@@ -106,7 +178,7 @@ def model_from_checkpoint(hidden_net, checkpoint):
     hidden_net.optimizer_discrim.load_state_dict(checkpoint['discrim-optim'])
 
 
-def load_options(options_file_name) -> (TrainingOptions, HiDDenConfiguration, dict):
+def load_options(options_file_name):
     """ Loads the training, model, and noise configurations from the given folder """
     with open(os.path.join(options_file_name), 'rb') as f:
         train_options = pickle.load(f)

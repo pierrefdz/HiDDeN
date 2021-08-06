@@ -20,11 +20,9 @@ class Noiser(nn.Module):
                 elif layer == 'QuantizationPlaceholder':
                     self.noise_layers.append(Quantization(device))
                 else:
-                    raise ValueError(f'Wrong layer placeholder string in Noiser.__init__().'
-                                     f' Expected "JpegPlaceholder" or "QuantizationPlaceholder" but got {layer} instead')
+                    raise NotImplementedError("%s does not exists"%layer)
             else:
                 self.noise_layers.append(layer)
-        # self.noise_layers = nn.Sequential(*noise_layers)
 
     def forward(self, encoded_and_cover):
         random_noise_layer = np.random.choice(self.noise_layers, 1)[0]

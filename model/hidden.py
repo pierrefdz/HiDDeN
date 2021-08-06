@@ -10,12 +10,11 @@ from noise_layers.noiser import Noiser
 
 
 class Hidden:
-    def __init__(self, configuration: HiDDenConfiguration, device: torch.device, noiser: Noiser, tb_logger):
+    def __init__(self, configuration: HiDDenConfiguration, device: torch.device, noiser: Noiser):
         """
         :param configuration: Configuration for the net, such as the size of the input image, number of channels in the intermediate layers, etc.
         :param device: torch.device object, CPU or GPU
         :param noiser: Object representing stacked noise layers.
-        :param tb_logger: Optional TensorboardX logger object, if specified -- enables Tensorboard logging
         """
         super(Hidden, self).__init__()
 
@@ -40,16 +39,6 @@ class Hidden:
         self.cover_label = 1
         self.encoded_label = 0
 
-        self.tb_logger = tb_logger
-        if tb_logger is not None:
-            from tensorboard_logger import TensorBoardLogger
-            encoder_final = self.encoder_decoder.encoder._modules['final_layer']
-            encoder_final.weight.register_hook(tb_logger.grad_hook_by_name('grads/encoder_out'))
-            decoder_final = self.encoder_decoder.decoder._modules['linear']
-            decoder_final.weight.register_hook(tb_logger.grad_hook_by_name('grads/decoder_out'))
-            discrim_final = self.discriminator._modules['linear']
-            discrim_final.weight.register_hook(tb_logger.grad_hook_by_name('grads/discrim_out'))
-
 
     def train_on_batch(self, batch: list):
         """
@@ -66,9 +55,9 @@ class Hidden:
             # ---------------- Train the discriminator -----------------------------
             self.optimizer_discrim.zero_grad()
             # train on cover
-            d_target_label_cover = torch.full((batch_size, 1), self.cover_label, device=self.device)
-            d_target_label_encoded = torch.full((batch_size, 1), self.encoded_label, device=self.device)
-            g_target_label_encoded = torch.full((batch_size, 1), self.cover_label, device=self.device)
+            d_target_label_cover = torch.full((batch_size, 1), self.cover_label, device=self.device).float()
+            d_target_label_encoded = torch.full((batch_size, 1), self.encoded_label, device=self.device).float()
+            g_target_label_encoded = torch.full((batch_size, 1), self.cover_label, device=self.device).float()
 
             d_on_cover = self.discriminator(images)
             d_loss_on_cover = self.bce_with_logits_loss(d_on_cover, d_target_label_cover)
@@ -123,15 +112,6 @@ class Hidden:
         :param batch: batch of validation data, in form [images, messages]
         :return: dictionary of error metrics from Encoder, Decoder, and Discriminator on the current batch
         """
-        # if TensorboardX logging is enabled, save some of the tensors.
-        if self.tb_logger is not None:
-            encoder_final = self.encoder_decoder.encoder._modules['final_layer']
-            self.tb_logger.add_tensor('weights/encoder_out', encoder_final.weight)
-            decoder_final = self.encoder_decoder.decoder._modules['linear']
-            self.tb_logger.add_tensor('weights/decoder_out', decoder_final.weight)
-            discrim_final = self.discriminator._modules['linear']
-            self.tb_logger.add_tensor('weights/discrim_out', discrim_final.weight)
-
         images, messages = batch
 
         batch_size = images.shape[0]
@@ -139,9 +119,9 @@ class Hidden:
         self.encoder_decoder.eval()
         self.discriminator.eval()
         with torch.no_grad():
-            d_target_label_cover = torch.full((batch_size, 1), self.cover_label, device=self.device)
-            d_target_label_encoded = torch.full((batch_size, 1), self.encoded_label, device=self.device)
-            g_target_label_encoded = torch.full((batch_size, 1), self.cover_label, device=self.device)
+            d_target_label_cover = torch.full((batch_size, 1), self.cover_label, device=self.device).float()
+            d_target_label_encoded = torch.full((batch_size, 1), self.encoded_label, device=self.device).float()
+            g_target_label_encoded = torch.full((batch_size, 1), self.cover_label, device=self.device).float()
 
             d_on_cover = self.discriminator(images)
             d_loss_on_cover = self.bce_with_logits_loss(d_on_cover, d_target_label_cover)
@@ -180,5 +160,5 @@ class Hidden:
         }
         return losses, (encoded_images, noised_images, decoded_messages)
 
-    def to_stirng(self):
+    def to_string(self):
         return '{}\n{}'.format(str(self.encoder_decoder), str(self.discriminator))

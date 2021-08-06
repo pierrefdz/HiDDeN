@@ -1,4 +1,3 @@
-import argparse
 import re
 from noise_layers.cropout import Cropout
 from noise_layers.crop import Crop
@@ -45,63 +44,30 @@ def parse_resize(resize_command):
     return Resize((min_ratio, max_ratio))
 
 
-class NoiseArgParser(argparse.Action):
-    def __init__(self,
-                 option_strings,
-                 dest,
-                 nargs=None,
-                 const=None,
-                 default=None,
-                 type=None,
-                 choices=None,
-                 required=False,
-                 help=None,
-                 metavar=None):
-        argparse.Action.__init__(self,
-                                 option_strings=option_strings,
-                                 dest=dest,
-                                 nargs=nargs,
-                                 const=const,
-                                 default=default,
-                                 type=type,
-                                 choices=choices,
-                                 required=required,
-                                 help=help,
-                                 metavar=metavar,
-                                 )
+def parse_noise_args(s):
 
-    @staticmethod
-    def parse_cropout_args(cropout_args):
-        pass
+    layers = []
+    split_commands = s.split('+')
 
-    @staticmethod
-    def parse_dropout_args(dropout_args):
-        pass
+    for command in split_commands:
+        # remove all whitespace
+        command = command.replace(' ', '')
+        if command[:len('cropout')] == 'cropout':
+            layers.append(parse_cropout(command))
+        elif command[:len('crop')] == 'crop':
+            layers.append(parse_crop(command))
+        elif command[:len('dropout')] == 'dropout':
+            layers.append(parse_dropout(command))
+        elif command[:len('resize')] == 'resize':
+            layers.append(parse_resize(command))
+        elif command[:len('jpeg')] == 'jpeg':
+            layers.append('JpegPlaceholder')
+        elif command[:len('quant')] == 'quant':
+            layers.append('QuantizationPlaceholder')
+        elif command[:len('identity')] == 'identity':
+            # We are adding one Identity() layer in Noiser anyway
+            pass
+        else:
+            raise ValueError('Command not recognized: \n{}'.format(command))
 
-    def __call__(self, parser, namespace, values,
-                 option_string=None):
-
-        layers = []
-        split_commands = values[0].split('+')
-
-        for command in split_commands:
-            # remove all whitespace
-            command = command.replace(' ', '')
-            if command[:len('cropout')] == 'cropout':
-                layers.append(parse_cropout(command))
-            elif command[:len('crop')] == 'crop':
-                layers.append(parse_crop(command))
-            elif command[:len('dropout')] == 'dropout':
-                layers.append(parse_dropout(command))
-            elif command[:len('resize')] == 'resize':
-                layers.append(parse_resize(command))
-            elif command[:len('jpeg')] == 'jpeg':
-                layers.append('JpegPlaceholder')
-            elif command[:len('quant')] == 'quant':
-                layers.append('QuantizationPlaceholder')
-            elif command[:len('identity')] == 'identity':
-                # We are adding one Identity() layer in Noiser anyway
-                pass
-            else:
-                raise ValueError('Command not recognized: \n{}'.format(command))
-        setattr(namespace, self.dest, layers)
+    return layers
