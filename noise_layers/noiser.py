@@ -6,6 +6,7 @@ import numpy as np
 from torchvision import transforms
 
 from noise_layers.rotate import Rotate
+from noise_layers.blur import Blur
 from noise_layers.cropout import Cropout
 from noise_layers.crop import Crop
 from noise_layers.identity import Identity
@@ -47,6 +48,13 @@ def parse_resize(resize_command):
     max_ratio = float(ratios[1])
     return Resize((min_ratio, max_ratio))
 
+def parse_blur(blur_command):
+    matches = re.match(r'blur\((\d*,\d*)\)', blur_command)
+    ratios = matches.groups()[0].split(',')
+    kernel_size_min = float(ratios[0])
+    kernel_size_max = float(ratios[1])
+    return Blur((kernel_size_min, kernel_size_max))
+
 def parse_rotate(rotate_command):
     matches = re.match(r'rotate\((\d*)\)', rotate_command)
     degrees = float(matches.groups()[0])
@@ -63,6 +71,7 @@ def parse_attack_args(s):
         'dropout': parse_dropout,
         'resize': parse_resize,
         'rotate': parse_rotate,
+        'blur': parse_blur,
         'jpeg': lambda x: 'JpegPlaceholder',
         'quant': lambda x: 'QuantizationPlaceholder',
     }
@@ -70,12 +79,11 @@ def parse_attack_args(s):
     for command in split_commands:
         command = command.replace(' ', '')
         if len(command) != 0:
-            for attack in parse_dict.keys():
-                attack = command.split('(')[0]
-                if attack in parse_dict.keys():
-                    layers.append(parse_dict[attack](command))
-                else:
-                    raise ValueError('Command not recognized: \n{}'.format(command))
+            attack = command.split('(')[0]
+            if attack in parse_dict.keys():
+                layers.append(parse_dict[attack](command))
+            else:
+                raise ValueError('Command not recognized: \n{}'.format(command))
 
     return layers
 

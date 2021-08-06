@@ -3,7 +3,7 @@ class HiDDenConfiguration():
     The HiDDeN network configuration.
     """
 
-    def __init__(self, H: int, W: int, message_length: int,
+    def __init__(self, message_length: int,
                  encoder_blocks: int, encoder_channels: int,
                  decoder_blocks: int, decoder_channels: int,
                  use_discriminator: bool,
@@ -13,8 +13,6 @@ class HiDDenConfiguration():
                  encoder_loss: float,
                  adversarial_loss: float,
                  enable_fp16: bool = False):
-        self.H = H
-        self.W = W
         self.message_length = message_length
         self.encoder_blocks = encoder_blocks
         self.encoder_channels = encoder_channels

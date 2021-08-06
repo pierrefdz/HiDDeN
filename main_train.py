@@ -1,27 +1,22 @@
-import json
-import os
-from pathlib import Path
-import pprint
 import argparse
 import datetime
+import json
+import logging
+import os
+import pprint
 import time
+from pathlib import Path
+
 import numpy as np
 import torch
-import pickle
-import logging
-import sys
-
-import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
-
-from hidden_configuration import *
-from model.hidden import Hidden
-from noise_layers.noiser import Noiser
-from noise_layers.noiser import parse_attack_args
+import torch.nn as nn
 
 import utils
 import utils_train
+from hidden_configuration import *
+from model.hidden import Hidden
+from noise_layers.noiser import Noiser, parse_attack_args
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -38,7 +33,6 @@ def get_parser():
     # parser.add_argument('--attack', nargs='*', action=NoiseArgParser, default="")
     parser.add_argument('--attacks', default="", type=str)
     # parser.add_argument('--attacks', default="crop((0.2,0.3),(0.4,0.5))+cropout((0.11,0.22),(0.33,0.44))+dropout(0.2,0.3)+jpeg()", type=str)
-    parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--num_bits', default=30, type=int)
 
     # Optimization params
@@ -82,7 +76,7 @@ def train(args):
     # Build HiDDeN and Noise model
     args.config_path = os.path.join(args.output_dir, 'config.json')
     if not os.path.exists(args.config_path):
-        hidden_args = {'H':args.image_size, 'W':args.image_size,'message_length':args.num_bits,
+        hidden_args = {'message_length':args.num_bits,
             'encoder_blocks':4, 'encoder_channels':64,
             'decoder_blocks':7, 'decoder_channels':64,
             'use_discriminator':True,'use_vgg':False,

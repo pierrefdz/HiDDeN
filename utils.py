@@ -16,7 +16,7 @@ from torch.utils import data
 import torch.nn.functional as F
 import torch.distributed as dist
 
-from hidden_configuration import HiDDenConfiguration, TrainingOptions
+from hidden_configuration import HiDDenConfiguration
 from model.hidden import Hidden
 
 
@@ -189,33 +189,6 @@ def load_options(options_file_name):
             setattr(hidden_config, 'enable_fp16', False)
 
     return train_options, hidden_config, noise_config
-
-
-def get_data_loaders(hidden_config: HiDDenConfiguration, train_options: TrainingOptions):
-    """ Get torch data loaders for training and validation. The data loaders take a crop of the image,
-    transform it into tensor, and normalize it."""
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.RandomCrop((hidden_config.H, hidden_config.W), pad_if_needed=True),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        ]),
-        'test': transforms.Compose([
-            transforms.CenterCrop((hidden_config.H, hidden_config.W)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        ])
-    }
-
-    train_images = datasets.ImageFolder(train_options.train_folder, data_transforms['train'])
-    train_loader = torch.utils.data.DataLoader(train_images, batch_size=train_options.batch_size, shuffle=True,
-                                               num_workers=4)
-
-    validation_images = datasets.ImageFolder(train_options.validation_folder, data_transforms['test'])
-    validation_loader = torch.utils.data.DataLoader(validation_images, batch_size=train_options.batch_size,
-                                                    shuffle=False, num_workers=4)
-
-    return train_loader, validation_loader
 
 
 def log_progress(losses_accu):

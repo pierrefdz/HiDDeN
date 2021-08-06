@@ -6,7 +6,7 @@ import numpy as np
 
 class Rotate(nn.Module):
     """
-    Resize the image. The target size is original size * resize_ratio
+    Rotate the image by random angle between -degrees and degrees.
     """
     def __init__(self, degrees, interpolation_method='nearest'):
         super(Rotate, self).__init__()
