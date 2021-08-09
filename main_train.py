@@ -17,6 +17,8 @@ import utils_train
 from hidden_configuration import *
 from model.hidden import Hidden
 from noise_layers.noiser import Noiser, parse_attack_args
+from torch.utils.tensorboard import SummaryWriter
+
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -66,6 +68,10 @@ def train(args):
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
     print("__log__:%s" % json.dumps(vars(params)))
+
+    if utils_train.is_main_process():
+        writer = SummaryWriter(os.path.join(args.output_dir, 'tensorboard'))
+        args.writer = writer
     
     # Git SHA
     print("git:{}".format(utils.get_sha()))
@@ -81,8 +87,10 @@ def train(args):
             'decoder_blocks':7, 'decoder_channels':64,
             'use_discriminator':True,'use_vgg':False,
             'discriminator_blocks':3, 'discriminator_channels':64,
-            'decoder_loss':1,'encoder_loss':0.7,
-            'adversarial_loss':1e-3,'enable_fp16':args.enable_fp16                      
+            'decoder_loss':1,
+            'encoder_loss':0.7,
+            'adversarial_loss':1e-3,
+            'enable_fp16':args.enable_fp16                      
         } 
         attack_config = parse_attack_args(args.attacks)
         hidden_config = HiDDenConfiguration(**hidden_args)
@@ -148,7 +156,14 @@ def train(args):
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
                 f.write(json.dumps(log_stats_val) + "\n")
-                
+            args.writer.add_scalar('Loss/loss', train_stats['loss'], epoch)
+            args.writer.add_scalar('Loss/loss_img', train_stats['encoder_mse'], epoch)
+            args.writer.add_scalar('Loss/loss_msg', train_stats['dec_mse'], epoch)
+            args.writer.add_scalar('Loss/loss_discr', train_stats['discr_cover_bce']+train_stats['discr_encod_bce'], epoch)
+            args.writer.add_scalar('Loss/loss_val', val_stats['loss'], epoch)
+            args.writer.add_scalar('BER/train', train_stats['bitwise-error'], epoch)
+            args.writer.add_scalar('BER/val', val_stats['bitwise-error'], epoch)
+            
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
