@@ -10,31 +10,25 @@ class Encoder(nn.Module):
     """
     def __init__(self, config: HiDDenConfiguration):
         super(Encoder, self).__init__()
-        self.conv_channels = config.encoder_channels
         self.num_blocks = config.encoder_blocks
 
-        layers = [ConvBNRelu(3, self.conv_channels)]
+        layers = [ConvBNRelu(3, config.encoder_channels)]
 
         for _ in range(config.encoder_blocks-1):
-            layer = ConvBNRelu(self.conv_channels, self.conv_channels)
+            layer = ConvBNRelu(config.encoder_channels, config.encoder_channels)
             layers.append(layer)
 
-        self.conv_layers = nn.Sequential(*layers)
-        self.after_concat_layer = ConvBNRelu(self.conv_channels + 3 + config.message_length,
-                                             self.conv_channels)
+        self.conv_bns = nn.Sequential(*layers)
+        self.after_concat_layer = ConvBNRelu(config.encoder_channels + 3 + config.message_length, config.encoder_channels)
 
-        self.final_layer = nn.Conv2d(self.conv_channels, 3, kernel_size=1)
+        self.final_layer = nn.Conv2d(config.encoder_channels, 3, kernel_size=1)
 
     def forward(self, image, message):
 
-        # First, add two dummy dimensions in the end of the message.
-        # This is required for the .expand to work correctly
-        expanded_message = message.unsqueeze(-1)
-        expanded_message.unsqueeze_(-1)
+        expanded_message = message.unsqueeze(-1).unsqueeze(-1) # BxLx1x1
+        expanded_message = expanded_message.expand(-1,-1, image.size(-2), image.size(-1)) # BxLxHxW
 
-        expanded_message = expanded_message.expand(-1,-1, image.size(-2), image.size(-1))
-        encoded_image = self.conv_layers(image)
-        # concatenate expanded message and image
+        encoded_image = self.conv_bns(image)
         concat = torch.cat([expanded_message, encoded_image, image], dim=1)
         im_w = self.after_concat_layer(concat)
         im_w = self.final_layer(im_w)

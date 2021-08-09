@@ -179,7 +179,7 @@ def val_one_epoch(hidden_net, data_loader, epoch, args):
     for it, (imgs, _) in enumerate(metric_logger.log_every(data_loader, 50, header)):
         imgs = imgs.to(device, non_blocking=True) # BxCxHxW
         msgs = utils.generate_messages(imgs.size(0), args.num_bits).to(device).type(torch.float) # BxK
-        losses, (encoded_images, attacked_images, decoded_messages) = hidden_net.validate_on_batch([imgs, msgs])
+        losses, _ = hidden_net.validate_on_batch([imgs, msgs])
         torch.cuda.synchronize()
         for name, loss in losses.items():
             metric_logger.update(**{name:loss})

@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import os
+from PIL import Image
 
 import numpy as np
 import pandas as pd
@@ -32,13 +33,13 @@ def get_parser():
     parser.add_argument("--output_dir", type=str, default="")
     parser.add_argument("--name_exp", type=str, default="")
     parser.add_argument("--save_images", type=utils.bool_inst, default=False)
-    parser.add_argument("--save_first_image", type=utils.bool_inst, default=True)
+    parser.add_argument("--save_first_images", type=utils.bool_inst, default=True)
     parser.add_argument("--debug_mode", type=int, default=1)
     parser.add_argument("--debug_step", type=int, default=1)
 
     # Datasets parameters
-    parser.add_argument("--data_dir", type=str, default="/checkpoint/lowik/watermarking/data/yfcc100m/", help="Folder directory")
-    # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
+    # parser.add_argument("--data_dir", type=str, default="/checkpoint/lowik/watermarking/data/yfcc100m/", help="Folder directory")
+    parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
     # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_orig", help="Folder directory")
 
     # Bits parameters
@@ -57,7 +58,7 @@ def get_parser():
     return parser
 
 
-def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, save=True):
+def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, save_samples=False):
     
     attacks_dict = {
         "none": lambda x : x,
@@ -95,7 +96,7 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
     for ii, img in enumerate(tqdm(imgs)):
         
         attacked_imgs = generate_attacks(img, attacks)
-        if ii==0 and save:
+        if ii==0 and save_samples:
             imgs_path = os.path.join(params.output_dir, 'imgs')
             if not os.path.exists(imgs_path):
                 os.makedirs(imgs_path)
@@ -167,16 +168,6 @@ def main(params):
     utils.model_from_checkpoint(hidden_net, checkpoint)
     encoder, decoder = hidden_net.encoder_decoder.encoder.eval(), hidden_net.encoder_decoder.decoder.eval()
 
-    # Initialize ECC
-    ecc_params = utils.parse_params(params.ecc_method)
-    if ecc_params['name']=='ldpc':
-        d_v, d_c = int(ecc_params['dv']), int(ecc_params['dc'])
-        ecc_params['H'], ecc_params['G'] = pyldpc.make_ldpc(params.num_bits, d_v, d_c, seed=0, systematic=True)
-        params.msg_bits = ecc_params['G'].shape[1]
-        logger.info("Using LDPC: (%i, %i) code" % (params.num_bits, params.msg_bits))
-    elif ecc_params['name']=='none':
-        params.msg_bits = params.num_bits
-
     # Load images
     logger.info('Loading images...')
     default_transform = transforms.Compose([
@@ -187,11 +178,22 @@ def main(params):
     dataset = datasets.ImageFolder(params.data_dir, transform=default_transform)
     dataloader = DataLoader(dataset, batch_size=params.batch_size, shuffle=False, num_workers=8)
 
+    # Initialize ECC
+    ecc_params = utils.parse_params(params.ecc_method)
+    if ecc_params['name']=='ldpc':
+        d_v, d_c = int(ecc_params['dv']), int(ecc_params['dc'])
+        ecc_params['H'], ecc_params['G'] = pyldpc.make_ldpc(params.num_bits, d_v, d_c, seed=0, systematic=True)
+        params.msg_bits = ecc_params['G'].shape[1]
+        logger.info("Using LDPC: (%i, %i) code" % (params.num_bits, params.msg_bits))
+    elif ecc_params['name']=='none':
+        params.msg_bits = params.num_bits
+
     # Encode
     logger.info('Watermarking images...')
     msgs_orig, msgs = utils.generate_messages(len(dataloader.dataset), params.msg_bits, ecc_params)
     pt_imgs_out = encode.encode(dataloader, msgs, encoder, params)
     imgs_out = [transforms.ToPILImage()(utils_img.unnormalize_img(pt_img).squeeze(0).clamp(0,1)) for pt_img in pt_imgs_out] 
+    # imgs_orig = 
 
     # Save images
     imgs_path = os.path.join(params.output_dir, 'imgs')
@@ -201,6 +203,8 @@ def main(params):
         for ii in range(len(imgs_out)):
             imgs_out[ii].save(os.path.join(imgs_path,"%i_encoded.png"%ii))
     elif params.save_first_images:
+        img_orig = Image.open(dataloader.dataset.imgs[0][0])
+        img_orig.save(os.path.join(imgs_path,"%i_orig.png"%0))
         imgs_out[0].save(os.path.join(imgs_path,"%i_encoded.png"%0))
 
     # Evaluate

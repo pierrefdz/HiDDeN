@@ -1,23 +1,12 @@
 import numpy as np
 import os
-import re
-import csv
-import time
 import pickle
-import logging
-import socket
 import subprocess
 import pyldpc
 
 import torch
-from torchvision import datasets, transforms
 import torchvision.utils
-from torch.utils import data
 import torch.nn.functional as F
-import torch.distributed as dist
-
-from hidden_configuration import HiDDenConfiguration
-from model.hidden import Hidden
 
 
 def bool_inst(v):
@@ -63,14 +52,24 @@ def generate_messages(n, k, ecc_params=None, fill=None):
     elif fill=='false':
         msgs_orig = torch.rand((n,k))>2
     msgs_orig = torch.rand((n,k))>0.5
-    if ecc_params is not None and ecc_params['name'] == "ldpc":
+    if ecc_params is not None:
         msgs = msgs_orig.clone()
-        msgs = msgs.numpy()
-        msgs = [pyldpc.encode(ecc_params['G'], msgs[kk,:], snr=np.inf) for kk in range(msgs.shape[0])] # NxK (K>K')
-        msgs = torch.tensor(np.vstack(msgs)) > 0
+        if ecc_params['name'] == "ldpc":
+            msgs = msgs.numpy()
+            msgs = [pyldpc.encode(ecc_params['G'], msgs[kk,:], snr=np.inf) for kk in range(msgs.shape[0])] # NxK (K>K')
+            msgs = torch.tensor(np.vstack(msgs)) > 0
         return msgs_orig, msgs
     else:
         return msgs_orig
+
+def model_from_checkpoint(hidden_net, checkpoint):
+    """ Restores the hidden_net object from a checkpoint object """
+    checkpoint['enc-dec-model'] = {k.replace("module.", ""): v for k, v in checkpoint['enc-dec-model'].items()}
+    checkpoint['discrim-model'] = {k.replace("module.", ""): v for k, v in checkpoint['discrim-model'].items()}
+    hidden_net.encoder_decoder.load_state_dict(checkpoint['enc-dec-model'])
+    hidden_net.optimizer_enc_dec.load_state_dict(checkpoint['enc-dec-optim'])
+    hidden_net.discriminator.load_state_dict(checkpoint['discrim-model'])
+    hidden_net.optimizer_discrim.load_state_dict(checkpoint['discrim-optim'])
 
 def parse_params(s):
     """
@@ -87,7 +86,6 @@ def parse_params(s):
         params[x[0]]=float(x[1])
     return params
 
-
 def image_to_tensor(image):
     """
     Transforms a numpy-image into torch tensor
@@ -100,7 +98,6 @@ def image_to_tensor(image):
     image_tensor = image_tensor / 127.5 - 1
     return image_tensor
 
-
 def tensor_to_image(tensor):
     """
     Transforms a torch tensor into numpy uint8 array (image)
@@ -110,7 +107,6 @@ def tensor_to_image(tensor):
     image = tensor.permute(0, 2, 3, 1).cpu().numpy()
     image = (image + 1) * 127.5
     return np.clip(image, 0, 255).astype(np.uint8)
-
 
 def save_images(original_images, watermarked_images, epoch, folder, resize_to=None):
     images = original_images[:original_images.shape[0], :, :, :].cpu()
@@ -128,56 +124,6 @@ def save_images(original_images, watermarked_images, epoch, folder, resize_to=No
     filename = os.path.join(folder, 'epoch-{}.png'.format(epoch))
     torchvision.utils.save_image(stacked_images, filename, original_images.shape[0], normalize=False)
 
-
-def sorted_nicely(l):
-    """ Sort the given iterable in the way that humans expect."""
-    convert = lambda text: int(text) if text.isdigit() else text
-    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
-    return sorted(l, key=alphanum_key)
-
-
-def last_checkpoint_from_folder(folder: str):
-    last_file = sorted_nicely(os.listdir(folder))[-1]
-    last_file = os.path.join(folder, last_file)
-    return last_file
-
-
-def save_checkpoint(model: Hidden, experiment_name: str, epoch: int, checkpoint_folder: str):
-    """ Saves a checkpoint at the end of an epoch. """
-    if not os.path.exists(checkpoint_folder):
-        os.makedirs(checkpoint_folder)
-
-    checkpoint_filename = f'{experiment_name}--epoch-{epoch}.pyt'
-    checkpoint_filename = os.path.join(checkpoint_folder, checkpoint_filename)
-    logging.info('Saving checkpoint to {}'.format(checkpoint_filename))
-    checkpoint = {
-        'enc-dec-model': model.encoder_decoder.state_dict(),
-        'enc-dec-optim': model.optimizer_enc_dec.state_dict(),
-        'discrim-model': model.discriminator.state_dict(),
-        'discrim-optim': model.optimizer_discrim.state_dict(),
-        'epoch': epoch
-    }
-    torch.save(checkpoint, checkpoint_filename)
-    logging.info('Saving checkpoint done.')
-
-
-# def load_checkpoint(hidden_net: Hidden, hidden_configuration: Options, this_run_folder: str):
-def load_last_checkpoint(checkpoint_folder):
-    """ Load the last checkpoint from the given folder """
-    last_checkpoint_file = last_checkpoint_from_folder(checkpoint_folder)
-    checkpoint = torch.load(last_checkpoint_file)
-
-    return checkpoint, last_checkpoint_file
-
-
-def model_from_checkpoint(hidden_net, checkpoint):
-    """ Restores the hidden_net object from a checkpoint object """
-    hidden_net.encoder_decoder.load_state_dict(checkpoint['enc-dec-model'])
-    hidden_net.optimizer_enc_dec.load_state_dict(checkpoint['enc-dec-optim'])
-    hidden_net.discriminator.load_state_dict(checkpoint['discrim-model'])
-    hidden_net.optimizer_discrim.load_state_dict(checkpoint['discrim-optim'])
-
-
 def load_options(options_file_name):
     """ Loads the training, model, and noise configurations from the given folder """
     with open(os.path.join(options_file_name), 'rb') as f:
@@ -189,41 +135,3 @@ def load_options(options_file_name):
             setattr(hidden_config, 'enable_fp16', False)
 
     return train_options, hidden_config, noise_config
-
-
-def log_progress(losses_accu):
-    log_print_helper(losses_accu, logging.info)
-
-
-def print_progress(losses_accu):
-    log_print_helper(losses_accu, print)
-
-
-def log_print_helper(losses_accu, log_or_print_func):
-    max_len = max([len(loss_name) for loss_name in losses_accu])
-    for loss_name, loss_value in losses_accu.items():
-        log_or_print_func(loss_name.ljust(max_len + 4) + '{:.4f}'.format(loss_value.avg))
-
-
-def create_folder_for_run(runs_folder, experiment_name):
-    if not os.path.exists(runs_folder):
-        os.makedirs(runs_folder)
-
-    this_run_folder = os.path.join(runs_folder, f'{experiment_name} {time.strftime("%Y.%m.%d--%H-%M-%S")}')
-
-    os.makedirs(this_run_folder)
-    os.makedirs(os.path.join(this_run_folder, 'checkpoints'))
-    os.makedirs(os.path.join(this_run_folder, 'images'))
-
-    return this_run_folder
-
-
-def write_losses(file_name, losses_accu, epoch, duration):
-    with open(file_name, 'a', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        if epoch == 1:
-            row_to_write = ['epoch'] + [loss_name.strip() for loss_name in losses_accu.keys()] + ['duration']
-            writer.writerow(row_to_write)
-        row_to_write = [epoch] + ['{:.4f}'.format(loss_avg.avg) for loss_avg in losses_accu.values()] + [
-            '{:.0f}'.format(duration)]
-        writer.writerow(row_to_write)

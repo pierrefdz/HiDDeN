@@ -42,6 +42,8 @@ data/
 runs/
 saved-runs/
 notebooks/
+experiments/
+runfiles/
 exps/
 imgs/
 

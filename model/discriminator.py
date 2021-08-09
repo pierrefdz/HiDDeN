@@ -13,15 +13,14 @@ class Discriminator(nn.Module):
         for _ in range(config.discriminator_blocks-1):
             layers.append(ConvBNRelu(config.discriminator_channels, config.discriminator_channels))
 
-        layers.append(nn.AdaptiveAvgPool2d(output_size=(1, 1)))
-        self.before_linear = nn.Sequential(*layers)
-        self.linear = nn.Linear(config.discriminator_channels, 1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
+        self.conv_bns = nn.Sequential(*layers)
+        self.linear = nn.Linear(config.discriminator_channels, 2)
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, image):
-        X = self.before_linear(image)
-        # the output is of shape b x c x 1 x 1, and we want to squeeze out the last two dummy dimensions and make
-        # the tensor of shape b x c. If we just call squeeze_() it will also squeeze the batch dimension when b=1.
-        X.squeeze_(3).squeeze_(2)
-        X = self.linear(X)
-        # X = torch.sigmoid(X)
-        return X
+        X = self.conv_bns(image)
+        X = self.avg_pool(X) # BxDcx1x1
+        X = X.squeeze(-1).squeeze(-1) # BxDc
+        X = self.linear(X) # Bx2
+        return self.softmax(X)[:,0:1] # Bx1 
