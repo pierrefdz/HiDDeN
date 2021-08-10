@@ -78,6 +78,7 @@ def parse_attack_args(s):
 
     for command in split_commands:
         command = command.replace(' ', '')
+        command = command.replace('none', '')
         if len(command) != 0:
             attack = command.split('(')[0]
             if attack in parse_dict.keys():
