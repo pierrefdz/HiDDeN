@@ -106,16 +106,6 @@ def batch_psnr(x):
     assert len(x.size())==4
     return torch.mean(20*np.log10(255) - 10*torch.log10(torch.mean(x**2, dim=[1,2,3]))).item() # BxCxWxH -> 1
 
-def jpeg_compression(image, quality_factor):
-    """
-    Args:
-        image: PIL image
-        q: quality factor
-    """
-    buffer = BytesIO()
-    image.save(buffer, format="JPEG", quality=quality_factor, optimice=True)
-    return Image.open(buffer)
-
 def center_crop(x, scale):
     """ Perform center crop such that the target area of the crop is at a given scale
     Args:
@@ -136,18 +126,8 @@ def resize(x, scale):
     new_edges_size = [int(s*scale) for s in x.size][::-1]
     return functional.resize(x, new_edges_size)
 
-def jpeg_compression_pt(pt_image, quality_factor):
-    """
-    Args:
-        pt_image: normalized image tensor
-        q: quality factor
-    """
-    pt_image = unnormalize_img(pt_image)
-    image = transforms.ToPILImage()(pt_image.squeeze(0))
-    image = jpeg_compression(image, quality_factor)
-    image = transforms.ToTensor()(image).unsqueeze(0)
-    return normalize_img(image)
-
+def psnr(x,y):
+    return 20*np.log10(255) - 10*np.log10(np.mean((x-y)**2))
 
 if __name__ == '__main__':
     img1 = torch.randn(1, 3, 256, 256).to(device)

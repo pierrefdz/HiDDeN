@@ -82,7 +82,7 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
         + [{'attack': 'center_crop', 'scale': 0.1*jj} for jj in range(1,11)] \
         + [{'attack': 'resize', 'scale': 0.1*jj} for jj in range(1,11)] \
         + [{'attack': 'blur', 'kernel_size': 1+2*jj} for jj in range(1,10)] \
-        + [{'attack': 'jpeg', 'quality': 20*jj} for jj in range(1,5)]
+        + [{'attack': 'jpeg', 'quality': 10*jj} for jj in range(1,11)]
         
     def generate_attacks(img, attacks):
         attacked_imgs = []
@@ -129,7 +129,13 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
         logger.info('\n%s'%df)
     return df
 
-def read_transform_df(df, verbose=1):
+def evaluate_psnr(imgs_out, imgs_orig):
+    psnrs = []
+    for ii in range(len(imgs_out)):
+        psnrs.append(utils_img.psnr(np.asarray(imgs_out[ii], dtype=int), np.asarray(imgs_orig[ii], dtype=int)))
+    return pd.DataFrame(psnrs, columns=['psnr'])
+
+def read_eval_on_attacks_df(df, verbose=1):
     """
     Reads the dataframe output by the previous function and returns 
     average scores for each transformation
@@ -193,7 +199,7 @@ def main(params):
     msgs_orig, msgs = utils.generate_messages(len(dataloader.dataset), params.msg_bits, ecc_params)
     pt_imgs_out = encode.encode(dataloader, msgs, encoder, params)
     imgs_out = [transforms.ToPILImage()(utils_img.unnormalize_img(pt_img).squeeze(0).clamp(0,1)) for pt_img in pt_imgs_out] 
-    # imgs_orig = 
+    imgs_orig = [Image.open(dataloader.dataset.imgs[ii][0]) for ii in range(len(dataloader.dataset))]
 
     # Save images
     imgs_path = os.path.join(params.output_dir, 'imgs')
@@ -201,16 +207,25 @@ def main(params):
         os.makedirs(imgs_path)
     if params.save_images:
         for ii in range(len(imgs_out)):
+            imgs_orig[ii].save(os.path.join(imgs_path,"%i_orig.png"%0))
             imgs_out[ii].save(os.path.join(imgs_path,"%i_encoded.png"%ii))
     elif params.save_first_images:
-        img_orig = Image.open(dataloader.dataset.imgs[0][0])
-        img_orig.save(os.path.join(imgs_path,"%i_orig.png"%0))
+        imgs_orig[0].save(os.path.join(imgs_path,"%i_orig.png"%0))
         imgs_out[0].save(os.path.join(imgs_path,"%i_encoded.png"%0))
 
     # Evaluate
     logger.info('Evaluating...')
-    df = evaluate(imgs_out, msgs_orig, decoder, default_transform, params, ecc_params, verbose=params.debug_mode)
-    read_transform_df(df, verbose=params.debug_mode)
+    eval_on_attacks_df = evaluate(imgs_out, msgs_orig, decoder, default_transform, params, ecc_params, verbose=params.debug_mode)
+    eval_on_attacks_df_agg = read_eval_on_attacks_df(eval_on_attacks_df, params.debug_mode)
+    eval_on_attacks_df_path = os.path.join(params.output_dir,'eval_on_attacks_df.csv')
+    eval_on_attacks_df.to_csv(eval_on_attacks_df_path, index=False)
+    eval_on_attacks_df_agg_path = os.path.join(params.output_dir,'eval_on_attacks_df_agg.csv')
+    eval_on_attacks_df_agg.to_csv(eval_on_attacks_df_agg_path, index=False)
+    logger.info('Succesfully saved DataFrame of evaluation on attacks')
+    psnr_df = evaluate_psnr(imgs_out, imgs_orig)
+    psnr_df_path = os.path.join(params.output_dir,'psnr_df.csv')
+    psnr_df.to_csv(psnr_df_path, index=False)
+    logger.info('Succesfully saved DataFrame of PSNRs')
 
 
 if __name__ == '__main__':
