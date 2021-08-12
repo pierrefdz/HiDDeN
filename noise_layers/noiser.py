@@ -78,7 +78,7 @@ def parse_attack_args(s):
         'resize': parse_resize,
         'rotate': parse_rotate,
         'blur': parse_blur,
-        # 'jpeg': parse_jpeg,
+        'jpeg_diff': parse_jpeg,
         'jpeg': lambda x: 'JpegPlaceholder',
         'quant': lambda x: 'QuantizationPlaceholder',
     }
