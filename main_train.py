@@ -19,6 +19,9 @@ from model.hidden import Hidden
 from noise_layers.noiser import Noiser, parse_attack_args
 from torch.utils.tensorboard import SummaryWriter
 
+from PIL import PngImagePlugin
+LARGE_ENOUGH_NUMBER = 100
+PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
