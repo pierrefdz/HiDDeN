@@ -26,21 +26,20 @@ def get_parser():
     parser = argparse.ArgumentParser()
 
     # Data and checkpoint dirs
-    parser.add_argument('--train-dir', default='/checkpoint/pfz/watermarking/data/train_coco_10k_resized', type=str)
-    parser.add_argument('--val-dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
+    parser.add_argument('--train_dir', default='/checkpoint/pfz/watermarking/data/train_coco_10k_resized', type=str)
+    parser.add_argument('--val_dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
     parser.add_argument('--output_dir', default="", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=50, type=int)
 
     # Network params
     # parser.add_argument('--attack', nargs='*', action=NoiseArgParser, default="")
     parser.add_argument('--attacks', default="", type=str)
-    # parser.add_argument('--attacks', default="crop((0.2,0.3),(0.4,0.5))+cropout((0.11,0.22),(0.33,0.44))+dropout(0.2,0.3)+jpeg()", type=str)
     parser.add_argument('--num_bits', default=30, type=int)
 
     # Optimization params
     parser.add_argument('--epochs', default=200, type=int)
     parser.add_argument('--enable_fp16', default=False, choices=[False], type=utils.bool_inst)
-    parser.add_argument('--batch-size', default=64, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--num_workers', default=8, type=int)
 
     # Distributed training parameters
@@ -105,27 +104,27 @@ def train(args):
     attacker = Noiser(attack_config, device)
     hidden_net = Hidden(hidden_config, device, attacker)
 
-    # Distributed training
-    hidden_net.encoder_decoder = nn.parallel.DistributedDataParallel(hidden_net.encoder_decoder, device_ids=[args.local_rank])
-    hidden_net.discriminator = nn.parallel.DistributedDataParallel(hidden_net.discriminator, device_ids=[args.local_rank])
-
     # Optionally resume training
     args.checkpoint_path = os.path.join(args.output_dir, "checkpoint.pth")
     if os.path.exists(args.checkpoint_path):
         print('Loading checkpoint from file %s'%args.checkpoint_path)
-        checkpoint = torch.load(args.checkpoint_path)
+        checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
         start_epoch = checkpoint['epoch']
         utils.model_from_checkpoint(hidden_net, checkpoint)
     else: 
         start_epoch = 0
 
+    # Distributed training
+    hidden_net.encoder_decoder = nn.parallel.DistributedDataParallel(hidden_net.encoder_decoder, device_ids=[args.local_rank])
+    hidden_net.discriminator = nn.parallel.DistributedDataParallel(hidden_net.discriminator, device_ids=[args.local_rank])
+
     # Log
-    if False:
-        print('HiDDeN model: {}\n'.format(hidden_net.to_string()))
+    if True:
+        # print('HiDDeN model: {}\n'.format(hidden_net.to_string()))
         print('Model Configuration:\n')
         print(pprint.pformat(vars(hidden_config)))
         print('\nNoise configuration:\n')
-        print(pprint.pformat(str(attack_config)))
+        print(str(attack_config))
 
     # Train
     start_time = time.time()

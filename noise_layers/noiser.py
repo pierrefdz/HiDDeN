@@ -11,6 +11,7 @@ from noise_layers.cropout import Cropout
 from noise_layers.crop import Crop
 from noise_layers.identity import Identity
 from noise_layers.dropout import Dropout
+from noise_layers.jpeg_diff import DiffJPEG
 from noise_layers.resize import Resize
 from noise_layers.quantization import Quantization
 from noise_layers.jpeg_compression import JpegCompression
@@ -60,9 +61,14 @@ def parse_rotate(rotate_command):
     degrees = float(matches.groups()[0])
     return Rotate(degrees)
 
+def parse_jpeg(jpeg_command):
+    matches = re.match(r'jpeg\((\d*)\)', jpeg_command)
+    quality = float(matches.groups()[0])
+    return DiffJPEG(quality=quality)
+
 def parse_attack_args(s):
 
-    layers = []
+    layers = [Identity()]
     split_commands = s.split('+')
 
     parse_dict = {
@@ -72,6 +78,7 @@ def parse_attack_args(s):
         'resize': parse_resize,
         'rotate': parse_rotate,
         'blur': parse_blur,
+        # 'jpeg': parse_jpeg,
         'jpeg': lambda x: 'JpegPlaceholder',
         'quant': lambda x: 'QuantizationPlaceholder',
     }
@@ -96,7 +103,7 @@ class Noiser(nn.Module):
     """
     def __init__(self, noise_layers: list, device):
         super(Noiser, self).__init__()
-        self.noise_layers = [Identity()]
+        self.noise_layers = []
         for layer in noise_layers:
             if type(layer) is str:
                 if layer == 'JpegPlaceholder':
@@ -106,7 +113,9 @@ class Noiser(nn.Module):
                 else:
                     raise NotImplementedError("%s does not exists"%layer)
             else:
+                layer.to(device)
                 self.noise_layers.append(layer)
+        
 
     def forward(self, encoded_and_cover):
         random_noise_layer = np.random.choice(self.noise_layers, 1)[0]
