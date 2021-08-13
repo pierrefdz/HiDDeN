@@ -62,7 +62,7 @@ def parse_rotate(rotate_command):
     return Rotate(degrees)
 
 def parse_jpeg(jpeg_command):
-    matches = re.match(r'jpeg\((\d*)\)', jpeg_command)
+    matches = re.match(r'jpeg_diff\((\d*)\)', jpeg_command)
     quality = float(matches.groups()[0])
     return DiffJPEG(quality=quality)
 
