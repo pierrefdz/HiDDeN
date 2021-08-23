@@ -58,7 +58,7 @@ def get_parser():
     return parser
 
 
-def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, save_samples=False):
+def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, save_samples=True):
     
     attacks_dict = {
         "none": lambda x : x,
@@ -81,7 +81,7 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
         + [{'attack': 'rotation', 'angle': jj} for jj in range(0,45,5)] \
         + [{'attack': 'center_crop', 'scale': 0.1*jj} for jj in range(1,11)] \
         + [{'attack': 'resize', 'scale': 0.1*jj} for jj in range(1,11)] \
-        + [{'attack': 'blur', 'kernel_size': 1+2*jj} for jj in range(1,10)] \
+        + [{'attack': 'blur', 'sigma': 0.2*jj, 'kernel_size':41} for jj in range(1,21)] \
         + [{'attack': 'jpeg', 'quality': 10*jj} for jj in range(1,11)]
         
     def generate_attacks(img, attacks):

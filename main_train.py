@@ -39,6 +39,11 @@ def get_parser():
     parser.add_argument('--attacks', default="", type=str)
     parser.add_argument('--num_bits', default=30, type=int)
 
+    # Loss params
+    parser.add_argument('--lambda_dec', default=1, type=float)
+    parser.add_argument('--lambda_enc', default=0.7, type=float)
+    parser.add_argument('--lambda_adv', default=1e-3, type=float)
+
     # Optimization params
     parser.add_argument('--epochs', default=200, type=int)
     parser.add_argument('--enable_fp16', default=False, choices=[False], type=utils.bool_inst)
@@ -89,9 +94,9 @@ def train(args):
             'decoder_blocks':7, 'decoder_channels':64,
             'use_discriminator':True,'use_vgg':False,
             'discriminator_blocks':3, 'discriminator_channels':64,
-            'decoder_loss':1,
-            'encoder_loss':0.7,
-            'adversarial_loss':1e-3,
+            'decoder_loss':args.lambda_dec, 
+            'encoder_loss':args.lambda_enc, 
+            'adversarial_loss':args.lambda_adv,
             'enable_fp16':args.enable_fp16                      
         } 
         attack_config = parse_attack_args(args.attacks)
