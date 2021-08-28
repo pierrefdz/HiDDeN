@@ -38,12 +38,12 @@ def get_parser():
     parser.add_argument("--debug_step", type=int, default=1)
 
     # Datasets parameters
-    # parser.add_argument("--data_dir", type=str, default="/checkpoint/lowik/watermarking/data/yfcc100m/", help="Folder directory")
-    parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
+    parser.add_argument("--data_dir", type=str, default="/checkpoint/lowik/watermarking/data/yfcc100m/", help="Folder directory")
+    # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
     # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_orig", help="Folder directory")
 
     # Bits parameters
-    parser.add_argument("--num_bits", type=int, default=0)
+    parser.add_argument("--num_bits", type=int, default=30)
     parser.add_argument("--redundancy", type=int, default=1)
     parser.add_argument("--ecc_method", type=str, default="none", help="Should be 'none' or 'ldpc,dv=*,dc=*,snr=*'")
 
@@ -64,6 +64,9 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
         "none": lambda x : x,
         "rotation": functional.rotate,
         "grayscale": functional.rgb_to_grayscale,
+        "contrast": functional.adjust_contrast,
+        "brightness": functional.adjust_brightness,
+        "hue": functional.adjust_hue,
         "hflip": functional.hflip,
         "vflip": functional.vflip,
         "blur": functional.gaussian_blur, # sigma = ksize*0.15 + 0.35  - ksize = (sigma-0.35)/0.15
@@ -82,7 +85,11 @@ def evaluate(imgs, msgs, decoder, preprocessing, params, ecc_params, verbose=1, 
         + [{'attack': 'center_crop', 'scale': 0.1*jj} for jj in range(1,11)] \
         + [{'attack': 'resize', 'scale': 0.1*jj} for jj in range(1,11)] \
         + [{'attack': 'blur', 'sigma': 0.2*jj, 'kernel_size':41} for jj in range(1,21)] \
-        + [{'attack': 'jpeg', 'quality': 10*jj} for jj in range(1,11)]
+        + [{'attack': 'jpeg', 'quality': 10*jj} for jj in range(1,11)] \
+        + [{'attack': 'contrast', 'contrast_factor': 0.5*jj} for jj in range(1,5)] \
+        + [{'attack': 'brightness', 'brightness_factor': 0.5*jj} for jj in range(1,5)] \
+        + [{'attack': 'hue', 'hue_factor': -0.5 + 0.25*jj} for jj in range(0,5)] \
+
         
     def generate_attacks(img, attacks):
         attacked_imgs = []
@@ -215,7 +222,7 @@ def main(params):
 
     # Evaluate
     logger.info('Evaluating...')
-    eval_on_attacks_df = evaluate(imgs_out, msgs_orig, decoder, default_transform, params, ecc_params, verbose=params.debug_mode)
+    eval_on_attacks_df = evaluate(imgs_orig, msgs_orig, decoder, default_transform, params, ecc_params, verbose=params.debug_mode)
     eval_on_attacks_df_agg = read_eval_on_attacks_df(eval_on_attacks_df, params.debug_mode)
     eval_on_attacks_df_path = os.path.join(params.output_dir,'eval_on_attacks_df.csv')
     eval_on_attacks_df.to_csv(eval_on_attacks_df_path, index=False)
