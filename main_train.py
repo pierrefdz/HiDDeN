@@ -33,6 +33,7 @@ def get_parser():
     parser.add_argument('--val_dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
     parser.add_argument('--output_dir', default="", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=50, type=int)
+    parser.add_argument('--resume_from', default=None, type=str, help='Checkpoint path to resume from.')
 
     # Network params
     # parser.add_argument('--attack', nargs='*', action=NoiseArgParser, default="")
@@ -119,7 +120,12 @@ def train(args):
         checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
         start_epoch = checkpoint['epoch']
         utils.model_from_checkpoint(hidden_net, checkpoint)
-    else: 
+    elif args.resume_from is not None:
+        print('Loading checkpoint from file %s'%args.resume_from)
+        checkpoint = torch.load(args.resume_from, map_location="cpu")
+        start_epoch = checkpoint['epoch']
+        utils.model_from_checkpoint(hidden_net, checkpoint)
+    else:
         start_epoch = 0
 
     # Distributed training

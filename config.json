@@ -1,0 +1,1 @@
+{"message_length": 30, "encoder_blocks": 4, "encoder_channels": 64, "decoder_blocks": 7, "decoder_channels": 64, "use_discriminator": true, "use_vgg": false, "discriminator_blocks": 3, "discriminator_channels": 64, "decoder_loss": 1, "encoder_loss": 0.7, "adversarial_loss": 0.001, "enable_fp16": false, "attacks_arg": "none+resized_crop((0.3,0.3),(0.3,0.3))"}
