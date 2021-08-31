@@ -88,28 +88,23 @@ def train(args):
     train_loader, val_loader = utils_train.get_data_loaders(args.train_dir, args.val_dir, args.batch_size, args.num_workers)
 
     # Build HiDDeN and Noise model
+    hidden_args = {'message_length':args.num_bits,
+        'encoder_blocks':4, 'encoder_channels':64,
+        'decoder_blocks':7, 'decoder_channels':64,
+        'use_discriminator':True,'use_vgg':False,
+        'discriminator_blocks':3, 'discriminator_channels':64,
+        'decoder_loss':args.lambda_dec, 
+        'encoder_loss':args.lambda_enc, 
+        'adversarial_loss':args.lambda_adv,
+        'enable_fp16':args.enable_fp16                      
+    } 
+    attack_config = parse_attack_args(args.attacks)
+    hidden_config = HiDDenConfiguration(**hidden_args)
     args.config_path = os.path.join(args.output_dir, 'config.json')
     if not os.path.exists(args.config_path):
-        hidden_args = {'message_length':args.num_bits,
-            'encoder_blocks':4, 'encoder_channels':64,
-            'decoder_blocks':7, 'decoder_channels':64,
-            'use_discriminator':True,'use_vgg':False,
-            'discriminator_blocks':3, 'discriminator_channels':64,
-            'decoder_loss':args.lambda_dec, 
-            'encoder_loss':args.lambda_enc, 
-            'adversarial_loss':args.lambda_adv,
-            'enable_fp16':args.enable_fp16                      
-        } 
-        attack_config = parse_attack_args(args.attacks)
-        hidden_config = HiDDenConfiguration(**hidden_args)
         with open(args.config_path, 'w') as f:
             hidden_args['attacks_arg'] = args.attacks
             json.dump(hidden_args, f)
-    else:
-        with open(args.config_path, 'rb') as f:
-            hidden_args = json.load(f)
-            attack_config = parse_attack_args(hidden_args.pop('attacks_arg'))
-            hidden_config = HiDDenConfiguration(**hidden_args)
     attacker = Noiser(attack_config, device)
     hidden_net = Hidden(hidden_config, device, attacker)
 
