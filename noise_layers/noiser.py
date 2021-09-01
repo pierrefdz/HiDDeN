@@ -1,5 +1,5 @@
 
-from noise_layers.resized_crop import ResizeCrop
+from noise_layers.resized_crop import ResizedCrop
 import re
 
 import torch.nn as nn
@@ -31,10 +31,12 @@ def parse_crop(crop_command):
     (hmin, hmax), (wmin, wmax) = parse_pair(matches.groups())
     return Crop((hmin, hmax), (wmin, wmax))
 
-def parse_resized_crop(crop_command):
-    matches = re.match(r'resized_crop\(\((\d+\.*\d*,\d+\.*\d*)\),\((\d+\.*\d*,\d+\.*\d*)\)\)', crop_command)
-    (hmin, hmax), (wmin, wmax) = parse_pair(matches.groups())
-    return ResizeCrop((hmin, hmax), (wmin, wmax))
+def parse_resized_crop(resized_crop_command):
+    matches = re.match(r'resized_crop\((\d+\.*\d*,\d+\.*\d*)\)', resized_crop_command)
+    ratios = matches.groups()[0].split(',')
+    scale_min = float(ratios[0])
+    scale_max = float(ratios[1])
+    return ResizedCrop((scale_min, scale_max))
 
 def parse_cropout(cropout_command):
     matches = re.match(r'cropout\(\((\d+\.*\d*,\d+\.*\d*)\),\((\d+\.*\d*,\d+\.*\d*)\)\)', cropout_command)
