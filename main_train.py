@@ -11,17 +11,16 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 
 import utils
 import utils_train
-from hidden_configuration import *
-from model.hidden import Hidden
+from model import Hidden, HiDDenConfiguration
 from noise_layers.noiser import Noiser, parse_attack_args
-from torch.utils.tensorboard import SummaryWriter
 
-from PIL import PngImagePlugin
-LARGE_ENOUGH_NUMBER = 100
-PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
+# from PIL import PngImagePlugin
+# LARGE_ENOUGH_NUMBER = 100
+# PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -31,7 +30,7 @@ def get_parser():
     # Data and checkpoint dirs
     parser.add_argument('--train_dir', default='/checkpoint/pfz/watermarking/data/train_coco_10k_resized', type=str)
     parser.add_argument('--val_dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
-    parser.add_argument('--output_dir', default="", type=str, help='Path to save logs and checkpoints.')
+    parser.add_argument('--output_dir', default="output/", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=50, type=int)
     parser.add_argument('--resume_from', default=None, type=str, help='Checkpoint path to resume from.')
 

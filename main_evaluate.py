@@ -18,9 +18,8 @@ import decode
 import encode
 import utils
 import utils_img
-from model import Hidden
 from noise_layers.noiser import Noiser
-from model import HiDDenConfiguration
+from model import Hidden, HiDDenConfiguration
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger()
@@ -37,9 +36,7 @@ def get_parser():
     parser.add_argument("--debug_step", type=int, default=1)
 
     # Datasets parameters
-    parser.add_argument("--data_dir", type=str, default="/checkpoint/lowik/watermarking/data/yfcc100m/", help="Folder directory")
-    # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
-    # parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_orig", help="Folder directory")
+    parser.add_argument("--data_dir", type=str, default="/checkpoint/pfz/watermarking/data/coco_1k_resized", help="Folder directory")
 
     # Bits parameters
     parser.add_argument("--num_bits", type=int, default=30)
@@ -184,7 +181,8 @@ def main(params):
     logger.info('Loading images...')
     default_transform = transforms.Compose([
         transforms.ToTensor(), 
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        utils_img.Colorspace('rgb', 'yuv'),
+        # transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     dataset = datasets.ImageFolder(params.data_dir, transform=default_transform)
@@ -193,10 +191,10 @@ def main(params):
     # Initialize ECC
     ecc_params = utils.parse_params(params.ecc_method)
     if ecc_params['name']=='ldpc':
-        import pyldpc
-        d_v, d_c = int(ecc_params['dv']), int(ecc_params['dc'])
-        ecc_params['H'], ecc_params['G'] = pyldpc.make_ldpc(params.num_bits, d_v, d_c, seed=0, systematic=True)
-        params.msg_bits = ecc_params['G'].shape[1]
+        # import pyldpc
+        # d_v, d_c = int(ecc_params['dv']), int(ecc_params['dc'])
+        # ecc_params['H'], ecc_params['G'] = pyldpc.make_ldpc(params.num_bits, d_v, d_c, seed=0, systematic=True)
+        # params.msg_bits = ecc_params['G'].shape[1]
         logger.info("Using LDPC: (%i, %i) code" % (params.num_bits, params.msg_bits))
     elif ecc_params['name']=='none':
         params.msg_bits = params.num_bits
@@ -205,7 +203,10 @@ def main(params):
     logger.info('Watermarking images...')
     msgs_orig, msgs = utils.generate_messages(len(dataloader.dataset), params.msg_bits, ecc_params)
     pt_imgs_out = encode.encode(dataloader, msgs, encoder, params)
-    imgs_out = [transforms.ToPILImage()(utils_img.unnormalize_img(pt_img).squeeze(0).clamp(0,1)) for pt_img in pt_imgs_out] 
+    imgs_out = [transforms.ToPILImage()(
+            utils_img.Colorspace('yuv', 'rgb')()(pt_img).squeeze(0).clamp(0,1)
+            # (utils_img.unnormalize_img(pt_img)).squeeze(0).clamp(0,1)
+        )  for pt_img in pt_imgs_out ] 
     imgs_orig = [Image.open(dataloader.dataset.imgs[ii][0]) for ii in range(len(dataloader.dataset))]
 
     # Save images

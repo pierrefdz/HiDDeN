@@ -11,6 +11,8 @@ from torchvision import datasets, transforms
 import torch.nn as nn
 import torchvision
 
+from utils_img import Colorspace
+
 class VGGLoss(nn.Module):
     """
     Part of pre-trained VGG16. This is used in case we want perceptual loss instead of Mean Square Error loss.
@@ -40,6 +42,46 @@ class VGGLoss(nn.Module):
     def forward(self, img):
         return self.vgg_loss(img)
 
+def get_data_loaders(train_dir, val_dir, batch_size, num_workers):
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.ToTensor(),
+            Colorspace("rgb", "yuv"),
+            # transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        ]),
+        'test': transforms.Compose([
+            transforms.ToTensor(),
+            Colorspace("rgb", "yuv"),
+            # transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        ])
+    }
+
+    train_dataset = datasets.ImageFolder(train_dir, data_transforms['train'])
+    train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, 
+        sampler=train_sampler,
+        batch_size=batch_size, 
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    val_dataset = datasets.ImageFolder(val_dir, data_transforms['test'])
+    val_sampler = torch.utils.data.DistributedSampler(val_dataset, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, 
+        sampler=val_sampler,
+        batch_size=2*batch_size, 
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    return train_loader, val_loader
+
+
+### Everything for distributed training
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -191,41 +233,6 @@ class MetricLogger(object):
         print('{} Total time: {} ({:.6f} s / it)'.format(
             header, total_time_str, total_time / len(iterable)))
 
-def get_data_loaders(train_dir, val_dir, batch_size, num_workers):
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        ]),
-        'test': transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        ])
-    }
-
-    train_dataset = datasets.ImageFolder(train_dir, data_transforms['train'])
-    train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, 
-        sampler=train_sampler,
-        batch_size=batch_size, 
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-
-    val_dataset = datasets.ImageFolder(val_dir, data_transforms['test'])
-    val_sampler = torch.utils.data.DistributedSampler(val_dataset, shuffle=False)
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset, 
-        sampler=val_sampler,
-        batch_size=2*batch_size, 
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-
-    return train_loader, val_loader
 
 def is_dist_avail_and_initialized():
     if not dist.is_available():

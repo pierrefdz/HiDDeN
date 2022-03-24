@@ -1,13 +1,8 @@
-from io import BytesIO
-from PIL import Image
+
 import torch
 import numpy as np
-from torch.autograd.variable import Variable
 import torch.nn.functional as F
 
-import augly.image as imaugs
-
-from torchvision import transforms
 from torchvision.transforms import functional
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,6 +13,143 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 image_mean = 0.5
 image_std = 0.5
+
+def rgb2yuv(x):
+    '''convert batched rgb tensor to yuv'''
+    out = x.clone()
+    out[:,0,:,:] =  0.299    * x[:,0,:,:] + 0.587    * x[:,1,:,:] + 0.114   * x[:,2,:,:]
+    out[:,1,:,:] = -0.168736 * x[:,0,:,:] - 0.331264 * x[:,1,:,:] + 0.5   * x[:,2,:,:]
+    out[:,2,:,:] =  0.5      * x[:,0,:,:] - 0.418688 * x[:,1,:,:] - 0.081312 * x[:,2,:,:]
+    return out
+
+def yuv2rgb(x):
+    '''convert batched yuv tensor to rgb'''
+    out = x.clone()
+    out[:,0,:,:] = x[:,0,:,:] + 1.402 * x[:,2,:,:]
+    out[:,1,:,:] = x[:,0,:,:] - 0.344136 * x[:,1,:,:] - 0.714136 * x[:,2,:,:]
+    out[:,2,:,:] = x[:,0,:,:] + 1.772 * x[:,1,:,:]
+    return out
+
+def yuv2ych(x):
+    '''convert batched yuv tensor to ych'''
+    out = x.clone()
+    out[:,0,:,:] = x[:,0,:,:]
+    out[:,1,:,:] = (x[:,1,:,:]**2 + x[:,2,:,:]**2)**0.5
+    out[:,2,:,:] = torch.atan2(x[:,2,:,:], x[:,1,:,:])/np.pi/2.
+    #output[:,2,:,:] += 1 * (output[:,2,:,:] < 0).type(torch.float)
+    return out
+
+def ych2yuv(x):
+    '''convert batched ych tensor to yuv'''
+    out = x.clone()
+    h = np.pi*x[:,2,:,:]*2.
+    out[:,0,:,:] = x[:,0,:,:]
+    out[:,1,:,:] = x[:,1,:,:]*torch.cos(h)
+    out[:,2,:,:] = x[:,1,:,:]*torch.sin(h)
+    return out
+
+def rgb2ych(x):
+    '''convert batched rgb tensor to ych'''
+    yuv = rgb2yuv(x)
+    return yuv2ych(yuv)
+    
+def ych2rgb(x):
+    '''convert batched ych tensor to rgb'''
+    yuv = ych2yuv(x)
+    return yuv2rgb(yuv)
+
+def rgba2ycha(x):
+    '''convert batched rgba tensor to ycha'''
+    a = x[:,3:4,:,:]
+    ych = rgb2ych(x[:,0:3,:,:])
+    return torch.cat([ych, a], dim=1)
+
+def ycha2rgba(x):
+    '''convert batched ycha tensor to rgba'''
+    a = x[:,3:4,:,:]
+    rgb = ych2rgb(x[:,0:3,:,:])
+    return torch.cat([rgb, a], dim=1)
+
+def rgba2yuva(x):
+    '''convert batched rgba tensor to yuva'''
+    a = x[:,3:4,:,:]
+    yuv = rgb2yuv(x[:,0:3,:,:])
+    return torch.cat([yuv, a], dim=1)
+
+def yuva2rgba(x):
+    '''convert batched yuva tensor to rgba'''
+    a = x[:,3:4,:,:]
+    rgb = yuv2rgb(x[:,0:3,:,:])
+    return torch.cat([rgb, a], dim=1)
+
+def ycha2yuva(x):
+    '''convert batched ycha tensor to yuva'''
+    a = x[:,3:4,:,:]
+    yuv = ych2yuv(x[:,0:3,:,:])
+    return torch.cat([yuv, a], dim=1)
+
+def yuva2ycha(x):
+    '''convert batched yuva tensor to ycha'''
+    a = x[:,3:4,:,:]
+    ych = yuv2ych(x[:,0:3,:,:])
+    return torch.cat([ych, a], dim=1)
+
+colorspace_functions = {
+    ("rgb", "yuv"): rgb2yuv,
+    ("rgb", "ych"): rgb2ych,
+    ("yuv", "ych"): yuv2ych,
+    ("yuv", "rgb"): yuv2rgb,
+    ("ych", "yuv"): ych2yuv,
+    ("ych", "rgb"): ych2rgb,
+    ("rgba", "yuva"): rgba2yuva,
+    ("rgba", "ycha"): rgba2ycha,
+    ("yuva", "ycha"): yuva2ycha,
+    ("yuva", "rgba"): yuva2rgba,
+    ("ycha", "yuva"): ycha2yuva,
+    ("ycha", "rgba"): ycha2rgba,
+}
+
+def convert(x, input_colorspace, output_colorspace, clip=True):
+    if clip and (output_colorspace == "rgb" or output_colorspace == "rgba"):
+        return F.hardtanh(colorspace_functions[(input_colorspace.lower(), output_colorspace.lower())](x), 0, 1)
+    else:
+        return colorspace_functions[(input_colorspace.lower(), output_colorspace.lower())](x)
+
+class Colorspace(object):
+    '''Convert from one colorspace to another
+    
+    Available colorspaces:
+        RGB, RGBA
+        YUV, YUVA
+        YCH, YCHA
+        
+    Parameters:
+        input_colorspace: string
+            colorspace of input image tensor
+        output_colorspace: string
+            colorspace of output image tensor
+        clip: bool
+            clip RGB and RGBA outputs within 0-1
+    '''
+    def __init__(self, input_colorspace, output_colorspace, clip=True):
+        self.input_colorspace = input_colorspace
+        self.output_colorspace = output_colorspace
+        self.clip = clip
+    
+    def __call__(self, tensor):
+        if self.input_colorspace == self.output_colorspace:
+            return tensor
+        if len(tensor.shape) == 3:
+            tensor = tensor.unsqueeze(0)
+            return convert(tensor, self.input_colorspace, self.output_colorspace, self.clip).squeeze(0)            
+        else:
+            return convert(tensor, self.input_colorspace, self.output_colorspace, self.clip)
+    
+    def __repr__(self):
+        format_string = self.__class__.__name__ + '(input_colorspace={0}'.format(self.input_colorspace)
+        format_string += ', output_colorspace={0}'.format(self.output_colorspace)
+        format_string += ')'
+        return format_string
 
 def normalize_img(x):
     return (x.to(device) - image_mean) / image_std
@@ -30,65 +162,6 @@ def round_pixel(x):
     y = torch.round(x_pixel).clamp(0, 255)
     y = normalize_img(y/255.0)
     return y
-
-def project_linf(x, y, radius):
-    """ Clamp x-y so that Linf(x,y)<=radius """
-    delta = x - y
-    delta = 255 * (delta * image_std)
-    delta = torch.clamp(delta, -radius, radius)
-    delta = (delta / 255.0) / image_std
-    return y + delta
-
-def psnr_clip(x, y, target_psnr):
-    """ Clip x-y so that PSNR(x,y)=target_psnr """
-    delta = x - y
-    delta = 255 * (delta * image_std)
-    psnr = 20*np.log10(255) - 10*torch.log10(torch.mean(delta**2))
-    if psnr<target_psnr:
-        delta = (torch.sqrt(10**((psnr-target_psnr)/10))) * delta 
-    psnr = 20*np.log10(255) - 10*torch.log10(torch.mean(delta**2))
-    delta = (delta / 255.0) / image_std
-    return y + delta
-
-def ssim_heatmap(img1, img2, window_size):
-    """ Compute the SSIM heatmap between 2 images """
-    _1D_window = torch.Tensor(
-        [np.exp(-(x - window_size//2)**2/float(2*1.5**2)) for x in range(window_size)]
-        ).to(device, non_blocking=True)
-    _1D_window = (_1D_window/_1D_window.sum()).unsqueeze(1)
-    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
-    window = Variable(_2D_window.expand(3, 1, window_size, window_size).contiguous())
-
-    mu1 = F.conv2d(img1, window, padding = window_size//2, groups = 3)
-    mu2 = F.conv2d(img2, window, padding = window_size//2, groups = 3)
-
-    mu1_sq = mu1.pow(2)
-    mu2_sq = mu2.pow(2)
-    mu1_mu2 = mu1*mu2
-
-    sigma1_sq = F.conv2d(img1*img1, window, padding = window_size//2, groups = 3) - mu1_sq
-    sigma2_sq = F.conv2d(img2*img2, window, padding = window_size//2, groups = 3) - mu2_sq
-    sigma12 = F.conv2d(img1*img2, window, padding = window_size//2, groups = 3) - mu1_mu2
-
-    C1 = 0.01**2
-    C2 = 0.03**2
-
-    ssim_map = ((2*mu1_mu2 + C1)*(2*sigma12 + C2))/((mu1_sq + mu2_sq + C1)*(sigma1_sq + sigma2_sq + C2))
-    return ssim_map
-
-def ssim_attenuation(x, y):
-    """ attenuate x-y using SSIM heatmap """
-    delta = x - y
-    ssim_map = ssim_heatmap(x, y, window_size=17) # 1xCxHxW
-    ssim_map = torch.sum(ssim_map, dim=1, keepdim=True)
-    ssim_map = torch.clamp_min(ssim_map,0)
-    # min_v = torch.min(ssim_map)
-    # range_v = torch.max(ssim_map) - min_v
-    # if range_v < 1e-10:
-    #     return y + delta
-    # ssim_map = (ssim_map - min_v) / range_v
-    delta = delta*ssim_map
-    return y + delta
 
 def get_pixel_img(x):
     return torch.round(torch.clamp(255 * unnormalize_img(x), 0, 255))
@@ -129,9 +202,3 @@ def resize(x, scale):
 def psnr(x,y):
     return 20*np.log10(255) - 10*np.log10(np.mean((x-y)**2))
 
-if __name__ == '__main__':
-    img1 = torch.randn(1, 3, 256, 256).to(device)
-    img2 = torch.randn(1, 3, 256, 256).to(device)
-    print(ssim_heatmap(img1, img2, window_size=11).size())
-    print(ssim_heatmap(img1, img2, window_size=11).max())
-    print(ssim_heatmap(img1, img2, window_size=11).min())
