@@ -2,11 +2,167 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from hidden_configuration import HiDDenConfiguration
-from model.discriminator import Discriminator
-from model.encoder_decoder import EncoderDecoder
-from vgg_loss import VGGLoss
+from utils_train import VGGLoss
 from noise_layers.noiser import Noiser
+
+
+class HiDDenConfiguration():
+    """
+    The HiDDeN network configuration.
+    """
+
+    def __init__(self, message_length: int,
+                 encoder_blocks: int, encoder_channels: int,
+                 decoder_blocks: int, decoder_channels: int,
+                 use_discriminator: bool,
+                 use_vgg: bool,
+                 discriminator_blocks: int, discriminator_channels: int,
+                 decoder_loss: float,
+                 encoder_loss: float,
+                 adversarial_loss: float,
+                 enable_fp16: bool = False):
+        self.message_length = message_length
+        self.encoder_blocks = encoder_blocks
+        self.encoder_channels = encoder_channels
+        self.use_discriminator = use_discriminator
+        self.use_vgg = use_vgg
+        self.decoder_blocks = decoder_blocks
+        self.decoder_channels = decoder_channels
+        self.discriminator_blocks = discriminator_blocks
+        self.discriminator_channels = discriminator_channels
+        self.decoder_loss = decoder_loss
+        self.encoder_loss = encoder_loss
+        self.adversarial_loss = adversarial_loss
+        self.enable_fp16 = enable_fp16
+
+
+class ConvBNRelu(nn.Module):
+    """
+    Building block used in HiDDeN network. Is a sequence of Convolution, Batch Normalization, and ReLU activation
+    """
+    def __init__(self, channels_in, channels_out):
+
+        super(ConvBNRelu, self).__init__()
+        
+        self.layers = nn.Sequential(
+            nn.Conv2d(channels_in, channels_out, 3, stride=1, padding=1),
+            nn.BatchNorm2d(channels_out, eps=1e-3),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+
+class Encoder(nn.Module):
+    """
+    Inserts a watermark into an image.
+    """
+    def __init__(self, config: HiDDenConfiguration):
+        super(Encoder, self).__init__()
+        self.num_blocks = config.encoder_blocks
+
+        layers = [ConvBNRelu(3, config.encoder_channels)]
+
+        for _ in range(config.encoder_blocks-1):
+            layer = ConvBNRelu(config.encoder_channels, config.encoder_channels)
+            layers.append(layer)
+
+        self.conv_bns = nn.Sequential(*layers)
+        self.after_concat_layer = ConvBNRelu(config.encoder_channels + 3 + config.message_length, config.encoder_channels)
+
+        self.final_layer = nn.Conv2d(config.encoder_channels, 3, kernel_size=1)
+
+    def forward(self, image, message):
+
+        expanded_message = message.unsqueeze(-1).unsqueeze(-1) # BxLx1x1
+        expanded_message = expanded_message.expand(-1,-1, image.size(-2), image.size(-1)) # BxLxHxW
+
+        encoded_image = self.conv_bns(image)
+        concat = torch.cat([expanded_message, encoded_image, image], dim=1)
+        im_w = self.after_concat_layer(concat)
+        im_w = self.final_layer(im_w)
+        return im_w
+
+
+class Decoder(nn.Module):
+    """
+    Decoder module. Receives a watermarked image and extracts the watermark.
+    The input image may have various kinds of noise applied to it,
+    such as Crop, JpegCompression, and so on. See Noise layers for more.
+    """
+    def __init__(self, config: HiDDenConfiguration):
+
+        super(Decoder, self).__init__()
+        self.channels = config.decoder_channels
+
+        layers = [ConvBNRelu(3, self.channels)]
+        for _ in range(config.decoder_blocks - 1):
+            layers.append(ConvBNRelu(self.channels, self.channels))
+
+        layers.append(ConvBNRelu(self.channels, config.message_length))
+        layers.append(nn.AdaptiveAvgPool2d(output_size=(1, 1)))
+        self.layers = nn.Sequential(*layers)
+
+        self.linear = nn.Linear(config.message_length, config.message_length)
+
+    def forward(self, image_with_wm):
+        x = self.layers(image_with_wm) # BxDcx1x1
+        x = x.squeeze(-1).squeeze(-1) # BxDc
+        x = self.linear(x)
+        return x
+
+
+class EncoderDecoder(nn.Module):
+    """
+    Combines Encoder->Noiser->Decoder into single pipeline.
+    The input is the cover image and the watermark message. The module inserts the watermark into the image
+    (obtaining encoded_image), then applies Noise layers (obtaining noised_image), then passes the noised_image
+    to the Decoder which tries to recover the watermark (called decoded_message). The module outputs
+    a three-tuple: (encoded_image, noised_image, decoded_message)
+    """
+    def __init__(self, config: HiDDenConfiguration, noiser: Noiser):
+
+        super(EncoderDecoder, self).__init__()
+        self.encoder = Encoder(config)
+        self.noiser = noiser
+
+        self.decoder = Decoder(config)
+
+    def forward(self, image, message, noise=True):
+        encoded_image = self.encoder(image, message)
+        if noise:
+            noised_and_cover = self.noiser([encoded_image, image])
+            noised_image = noised_and_cover[0]
+            decoded_message = self.decoder(noised_image)
+            return encoded_image, noised_image, decoded_message
+        else:
+            decoded_message = self.decoder(encoded_image)
+            return encoded_image, decoded_message
+
+
+class Discriminator(nn.Module):
+    """
+    Discriminator network. Receives an image and has to figure out whether it has a watermark inserted into it, or not.
+    """
+    def __init__(self, config: HiDDenConfiguration):
+        super(Discriminator, self).__init__()
+
+        layers = [ConvBNRelu(3, config.discriminator_channels)]
+        for _ in range(config.discriminator_blocks-1):
+            layers.append(ConvBNRelu(config.discriminator_channels, config.discriminator_channels))
+
+        self.avg_pool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
+        self.conv_bns = nn.Sequential(*layers)
+        self.linear = nn.Linear(config.discriminator_channels, 2)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, image):
+        X = self.conv_bns(image)
+        X = self.avg_pool(X) # BxDcx1x1
+        X = X.squeeze(-1).squeeze(-1) # BxDc
+        X = self.linear(X) # Bx2
+        return self.softmax(X)[:,0:1] # Bx1 
 
 
 class Hidden:

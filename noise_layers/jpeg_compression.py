@@ -38,18 +38,18 @@ def idct_coeff(n, k, N):
         np.pi / N * (k + 1. / 2.) * n)) * np.sqrt(1 / (2. * N))
 
 
-def rgb2yuv(image_rgb, image_yuv_out):
-    """ Transform the image from rgb to yuv """
-    image_yuv_out[:, 0, :, :] = 0.299 * image_rgb[:, 0, :, :].clone() + 0.587 * image_rgb[:, 1, :, :].clone() + 0.114 * image_rgb[:, 2, :, :].clone()
-    image_yuv_out[:, 1, :, :] = -0.14713 * image_rgb[:, 0, :, :].clone() + -0.28886 * image_rgb[:, 1, :, :].clone() + 0.436 * image_rgb[:, 2, :, :].clone()
-    image_yuv_out[:, 2, :, :] = 0.615 * image_rgb[:, 0, :, :].clone() + -0.51499 * image_rgb[:, 1, :, :].clone() + -0.10001 * image_rgb[:, 2, :, :].clone()
+# def rgb2yuv(image_rgb, image_yuv_out):
+#     """ Transform the image from rgb to yuv """
+#     image_yuv_out[:, 0, :, :] = 0.299 * image_rgb[:, 0, :, :].clone() + 0.587 * image_rgb[:, 1, :, :].clone() + 0.114 * image_rgb[:, 2, :, :].clone()
+#     image_yuv_out[:, 1, :, :] = -0.14713 * image_rgb[:, 0, :, :].clone() + -0.28886 * image_rgb[:, 1, :, :].clone() + 0.436 * image_rgb[:, 2, :, :].clone()
+#     image_yuv_out[:, 2, :, :] = 0.615 * image_rgb[:, 0, :, :].clone() + -0.51499 * image_rgb[:, 1, :, :].clone() + -0.10001 * image_rgb[:, 2, :, :].clone()
 
 
-def yuv2rgb(image_yuv, image_rgb_out):
-    """ Transform the image from yuv to rgb """
-    image_rgb_out[:, 0, :, :] = image_yuv[:, 0, :, :].clone() + 1.13983 * image_yuv[:, 2, :, :].clone()
-    image_rgb_out[:, 1, :, :] = image_yuv[:, 0, :, :].clone() + -0.39465 * image_yuv[:, 1, :, :].clone() + -0.58060 * image_yuv[:, 2, :, :].clone()
-    image_rgb_out[:, 2, :, :] = image_yuv[:, 0, :, :].clone() + 2.03211 * image_yuv[:, 1, :, :].clone()
+# def yuv2rgb(image_yuv, image_rgb_out):
+#     """ Transform the image from yuv to rgb """
+#     image_rgb_out[:, 0, :, :] = image_yuv[:, 0, :, :].clone() + 1.13983 * image_yuv[:, 2, :, :].clone()
+#     image_rgb_out[:, 1, :, :] = image_yuv[:, 0, :, :].clone() + -0.39465 * image_yuv[:, 1, :, :].clone() + -0.58060 * image_yuv[:, 2, :, :].clone()
+#     image_rgb_out[:, 2, :, :] = image_yuv[:, 0, :, :].clone() + 2.03211 * image_yuv[:, 1, :, :].clone()
 
 
 class JpegCompression(nn.Module):
@@ -124,9 +124,10 @@ class JpegCompression(nn.Module):
 
         noised_image = nn.ZeroPad2d((0, pad_width, 0, pad_height))(noised_image)
 
+        image_yuv = noised_image
         # convert to yuv
-        image_yuv = torch.empty_like(noised_image)
-        rgb2yuv(noised_image, image_yuv)
+        # image_yuv = torch.empty_like(noised_image)
+        # rgb2yuv(noised_image, image_yuv)
 
         assert image_yuv.shape[2] % 8 == 0
         assert image_yuv.shape[3] % 8 == 0
@@ -141,8 +142,9 @@ class JpegCompression(nn.Module):
         # apply inverse dct (idct)
         image_idct = self.apply_conv(image_dct_mask, 'idct')
         # transform from yuv to to rgb
-        image_ret_padded = torch.empty_like(image_dct)
-        yuv2rgb(image_idct, image_ret_padded)
+        image_ret_padded = image_dct
+        # image_ret_padded = torch.empty_like(image_dct)
+        # yuv2rgb(image_idct, image_ret_padded)
 
         # un-pad
         noised_and_cover[0] = image_ret_padded[:, :, :image_ret_padded.shape[2]-pad_height, :image_ret_padded.shape[3]-pad_width].clone()

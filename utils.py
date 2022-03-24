@@ -2,7 +2,6 @@ import numpy as np
 import os
 import pickle
 import subprocess
-import pyldpc
 
 import torch
 import torchvision.utils
@@ -55,6 +54,7 @@ def generate_messages(n, k, ecc_params=None, fill=None):
     if ecc_params is not None:
         msgs = msgs_orig.clone()
         if ecc_params['name'] == "ldpc":
+            import pyldpc
             msgs = msgs.numpy()
             msgs = [pyldpc.encode(ecc_params['G'], msgs[kk,:], snr=np.inf) for kk in range(msgs.shape[0])] # NxK (K>K')
             msgs = torch.tensor(np.vstack(msgs)) > 0

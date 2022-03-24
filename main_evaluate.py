@@ -7,7 +7,6 @@ from PIL import Image
 
 import numpy as np
 import pandas as pd
-import pyldpc
 import torch
 from augly.image import functional as aug_functional
 from torch.utils.data.dataloader import DataLoader
@@ -19,9 +18,9 @@ import decode
 import encode
 import utils
 import utils_img
-from model.hidden import Hidden
+from model import Hidden
 from noise_layers.noiser import Noiser
-from hidden_configuration import HiDDenConfiguration
+from model import HiDDenConfiguration
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger()
@@ -194,6 +193,7 @@ def main(params):
     # Initialize ECC
     ecc_params = utils.parse_params(params.ecc_method)
     if ecc_params['name']=='ldpc':
+        import pyldpc
         d_v, d_c = int(ecc_params['dv']), int(ecc_params['dc'])
         ecc_params['H'], ecc_params['G'] = pyldpc.make_ldpc(params.num_bits, d_v, d_c, seed=0, systematic=True)
         params.msg_bits = ecc_params['G'].shape[1]

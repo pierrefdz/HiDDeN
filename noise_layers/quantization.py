@@ -44,27 +44,3 @@ class Quantization(nn.Module):
         noised_image = transform(noised_image, (noised_and_cover[0].min(), noised_and_cover[0].max()))
         return [noised_image, noised_and_cover[1]]
 
-
-# def main():
-#     import numpy as np
-#     qq = Quantization()
-#     min_value = -1.4566678979
-#     max_value = 2.334567325678
-#     # min_value = 0.0
-#     # max_value = 255.0
-#     data = torch.rand((12, 3, 64, 64))
-#     data = (max_value - min_value) * data + min_value
-#     print(f'data.min(): {data.min()}')
-#     print(f'data.max(): {data.max()}')
-#     print(f'data.avg(): {data.mean()}')
-#     data_tf, _ = qq.forward([data, None])
-#     print('perform quantization')
-#     print(f'data.min(): {data_tf.min()}')
-#     print(f'data.max(): {data_tf.max()}')
-#     print(f'data.avg(): {data_tf.mean()}')
-#
-#     print(f'mse diff:  {np.mean((data.numpy()-data_tf.numpy())**2)}')
-#     print(f'mabs diff: {np.mean(np.abs(data.numpy()-data_tf.numpy()))}')
-#
-# if __name__ == '__main__':
-#     main()

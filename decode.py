@@ -1,6 +1,5 @@
 
 import numpy as np
-import pyldpc
 from tqdm import tqdm
 import torch
 
@@ -25,6 +24,7 @@ def decode(imgs, decoder, preprocessing, params, ecc_params):
         msg = 2*decoder(img)-1
 
         if ecc_params['name'] == "ldpc":
+            import pyldpc
             msg = msg.cpu().numpy().astype(np.float64)
             if not 'snr' in ecc_params:
                 ecc_params['snr'] = 10*np.log(1/np.abs(msg).var())
