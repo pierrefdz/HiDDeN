@@ -28,7 +28,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
 
     # Data and checkpoint dirs
-    parser.add_argument('--train_dir', default='/checkpoint/pfz/watermarking/data/train_coco_10k_resized', type=str)
+    parser.add_argument('--train_dir', default='/checkpoint/pfz/watermarking/data/coco_10k_resized', type=str)
     parser.add_argument('--val_dir', default='/checkpoint/pfz/watermarking/data/coco_1k_resized', type=str)
     parser.add_argument('--output_dir', default="output/", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=50, type=int)
@@ -43,6 +43,9 @@ def get_parser():
     parser.add_argument('--lambda_dec', default=1, type=float)
     parser.add_argument('--lambda_enc', default=0.7, type=float)
     parser.add_argument('--lambda_adv', default=1e-3, type=float)
+    parser.add_argument('--lr', default=None, type=float)
+    parser.add_argument('--lr_enc_dec', default=1e-3, type=float)
+    parser.add_argument('--lr_discrim', default=1e-3, type=float)
 
     # Optimization params
     parser.add_argument('--epochs', default=200, type=int)
@@ -87,6 +90,9 @@ def train(args):
     train_loader, val_loader = utils_train.get_data_loaders(args.train_dir, args.val_dir, args.batch_size, args.num_workers)
 
     # Build HiDDeN and Noise model
+    if args.lr is not None:
+        args.lr_enc_dec = args.lr
+        args.lr_discrim = args.lr
     hidden_args = {'message_length':args.num_bits,
         'encoder_blocks':4, 'encoder_channels':64,
         'decoder_blocks':7, 'decoder_channels':64,
@@ -95,7 +101,9 @@ def train(args):
         'decoder_loss':args.lambda_dec, 
         'encoder_loss':args.lambda_enc, 
         'adversarial_loss':args.lambda_adv,
-        'enable_fp16':args.enable_fp16                      
+        'enable_fp16':args.enable_fp16, 
+        'lr_enc_dec':args.lr_enc_dec, 
+        'lr_discrim':args.lr_discrim,                
     } 
     attack_config = parse_attack_args(args.attacks)
     hidden_config = HiDDenConfiguration(**hidden_args)

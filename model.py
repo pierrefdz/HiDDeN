@@ -20,7 +20,10 @@ class HiDDenConfiguration():
                  decoder_loss: float,
                  encoder_loss: float,
                  adversarial_loss: float,
-                 enable_fp16: bool = False):
+                 enable_fp16: bool = False,
+                 lr_enc_dec: float = 0.001,
+                 lr_discrim: float = 0.001
+                 ):
         self.message_length = message_length
         self.encoder_blocks = encoder_blocks
         self.encoder_channels = encoder_channels
@@ -34,6 +37,9 @@ class HiDDenConfiguration():
         self.encoder_loss = encoder_loss
         self.adversarial_loss = adversarial_loss
         self.enable_fp16 = enable_fp16
+        self.lr_enc_dec = lr_enc_dec
+        self.lr_discrim = lr_discrim
+
 
 
 class ConvBNRelu(nn.Module):
@@ -176,8 +182,8 @@ class Hidden:
 
         self.encoder_decoder = EncoderDecoder(configuration, noiser).to(device)
         self.discriminator = Discriminator(configuration).to(device)
-        self.optimizer_enc_dec = torch.optim.Adam(self.encoder_decoder.parameters())
-        self.optimizer_discrim = torch.optim.Adam(self.discriminator.parameters())
+        self.optimizer_enc_dec = torch.optim.Adam(self.encoder_decoder.parameters(), lr = configuration.lr_enc_dec)
+        self.optimizer_discrim = torch.optim.Adam(self.discriminator.parameters(), lr = configuration.lr_discrim)
 
         if configuration.use_vgg:
             self.vgg_loss = VGGLoss(3, 1, False)
